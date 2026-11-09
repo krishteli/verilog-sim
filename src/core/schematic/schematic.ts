@@ -256,7 +256,9 @@ export function buildSchematic(netlist: Netlist, scope: string): Schematic {
       title = 'always @(*)';
     } else {
       const head = p.body.k === 'wait' ? triggerText(p.body.trigger, signals, scope) : p.body.k === 'delay' ? `#${exprText(p.body.amount, signals, scope)}` : '';
-      kind = [...triggers.values()].some((e) => e) ? 'seq' : 'comb';
+      // Edge-triggered: registers. Level-sensitive list: logic. Only delays
+      // (`always #5 clk = ~clk`): a timed testbench process, like `initial`.
+      kind = [...triggers.values()].some((e) => e) ? 'seq' : triggers.size > 0 ? 'comb' : 'initial';
       title = truncate(`always ${head}`.trim());
     }
     const n = newNode(kind, title, p.span);

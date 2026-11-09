@@ -77,4 +77,12 @@ describe('exprText', () => {
     const a = n.assigns.find((x) => x.origin === 'assign')!;
     expect(exprText(a.rhs, n.signals, 'm')).toBe("((a[7:4] + b[1]) & ~a) ? a : {b, 4'd3}");
   });
+
+  it('prints part selects with the bits they really select', () => {
+    const n = compile(`module m #(parameter N = 6)(input [7:0] a, input [2:0] i, input [8:15] c, output [9:0] y);
+      assign y = {a[N-1 -: 2], a[i +: 2], a[i -: 3], a[i], c[i +: 2]};
+    endmodule`);
+    const a = n.assigns.find((x) => x.origin === 'assign')!;
+    expect(exprText(a.rhs, n.signals, 'm')).toBe('{a[5:4], a[i +: 2], a[i - 2 +: 3], a[i], c[i +: 2]}');
+  });
 });
