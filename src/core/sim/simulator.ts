@@ -44,6 +44,8 @@ export interface SimOptions {
   maxStepsPerTime?: number;
   /** Stop printing after this many output characters. */
   maxOutputChars?: number;
+  /** Keep value-change history for the waveform viewer (default true). An endless interactive session turns it off. */
+  recordWaves?: boolean;
 }
 
 /** Value-change history of one signal: `values[i]` holds from `times[i]` until `times[i+1]`. */
@@ -62,6 +64,44 @@ export interface SimResult {
 
 export function simulate(netlist: Netlist, options: SimOptions = {}): SimResult {
   return new Simulator(netlist, options).run();
+}
+
+/**
+ * An open-ended simulation driven from outside, for the virtual board.
+ *
+ * `simulate()` runs a testbench to completion: the testbench is what wiggles
+ * the inputs. Here the *caller* is the testbench: it pokes input signals
+ * (a switch flipped, the clock toggled) and advances time step by step,
+ * reading outputs in between. Both use the same event-driven engine.
+ */
+export interface SimSession {
+  /** Set an input signal now and let the design settle (runs a full time step). */
+  poke(sig: number, value: bigint): void;
+  /** Process every scheduled event up to and including time `t`; afterwards `time === t`. */
+  advanceTo(t: number): void;
+  peek(sig: number): bigint;
+  readonly time: number;
+  /** True once the design called $finish/$stop. */
+  readonly finished: boolean;
+  /** Output printed since the last call. */
+  takeOutput(): string;
+}
+
+export function createSession(netlist: Netlist, options: SimOptions = {}): SimSession {
+  const sim = new Simulator(netlist, { recordWaves: false, ...options });
+  sim.start();
+  return {
+    poke: (sig, value) => sim.poke(sig, value),
+    advanceTo: (t) => sim.advanceTo(t),
+    peek: (sig) => sim.peek(sig),
+    get time() {
+      return sim.time;
+    },
+    get finished() {
+      return sim.isFinished;
+    },
+    takeOutput: () => sim.takeOutput(),
+  };
 }
 
 // ---- internal types ----------------------------------------------------------------
@@ -177,6 +217,7 @@ class Simulator {
   private readonly maxTime: number;
   private readonly maxSteps: number;
   private readonly maxOutputChars: number;
+  private readonly recordWaves: boolean;
 
   constructor(
     private readonly netlist: Netlist,
@@ -185,6 +226,7 @@ class Simulator {
     this.maxTime = opts.maxTime ?? 100_000;
     this.maxSteps = opts.maxStepsPerTime ?? 1_000_000;
     this.maxOutputChars = opts.maxOutputChars ?? 1_000_000;
+    this.recordWaves = opts.recordWaves ?? true;
 
     this.signals = netlist.signals;
     this.values = this.signals.map(() => 0n);
@@ -196,6 +238,72 @@ class Simulator {
   }
 
   run(): SimResult {
+    this.start();
+    let stopReason: SimResult['stopReason'] = 'idle';
+    for (;;) {
+      if (this.finished) {
+        stopReason = 'finish';
+        break;
+      }
+      const next = this.times[0];
+      if (next === undefined) break;
+      if (next > this.maxTime) {
+        stopReason = 'maxTime';
+        this.now = this.maxTime;
+        break;
+      }
+      this.stepTo(next);
+    }
+
+    return { output: this.out.join(''), endTime: this.now, stopReason, waves: this.waves };
+  }
+
+  // ---- interactive use (see SimSession) ---------------------------------------------
+
+  get time(): number {
+    return this.now;
+  }
+
+  get isFinished(): boolean {
+    return this.finished;
+  }
+
+  peek(sig: number): bigint {
+    return this.values[sig]!;
+  }
+
+  poke(sig: number, value: bigint): void {
+    if (this.finished) return;
+    this.setSignal(sig, trunc(value, this.signals[sig]!.width));
+    this.runTimeStep();
+  }
+
+  advanceTo(t: number): void {
+    while (!this.finished) {
+      const next = this.times[0];
+      if (next === undefined || next > t) break;
+      this.stepTo(next);
+    }
+    if (!this.finished && t > this.now) this.now = t;
+  }
+
+  takeOutput(): string {
+    const text = this.out.join('');
+    this.out = [];
+    return text;
+  }
+
+  /** Advance to the next scheduled time `t` and run that time step. */
+  private stepTo(t: number): void {
+    this.times.shift();
+    this.now = t;
+    for (const p of this.future.get(t)!) this.schedule(p);
+    this.future.delete(t);
+    this.runTimeStep();
+  }
+
+  /** Schedule everything that happens at time 0 and run that first time step. */
+  start(): void {
     /*
      * Time-0 startup order, chosen to match Icarus (verified against it):
      *   1. `always` blocks start and arm their first wait;
@@ -231,27 +339,7 @@ class Simulator {
 
     for (const { proc, kind } of procs) if (kind === 'initial') this.schedule(proc);
 
-    let stopReason: SimResult['stopReason'] = 'idle';
-    for (;;) {
-      this.runTimeStep();
-      if (this.finished) {
-        stopReason = 'finish';
-        break;
-      }
-      const next = this.times[0];
-      if (next === undefined) break;
-      if (next > this.maxTime) {
-        stopReason = 'maxTime';
-        this.now = this.maxTime;
-        break;
-      }
-      this.times.shift();
-      this.now = next;
-      for (const p of this.future.get(next)!) this.schedule(p);
-      this.future.delete(next);
-    }
-
-    return { output: this.out.join(''), endTime: this.now, stopReason, waves: this.waves };
+    this.runTimeStep();
   }
 
   /** Run regions 1-4 for the current time until nothing is left to do. */
@@ -546,6 +634,7 @@ class Simulator {
   }
 
   private record(id: number, v: bigint): void {
+    if (!this.recordWaves) return;
     const w = this.waves[id]!;
     const n = w.times.length;
     if (w.times[n - 1] === this.now) {

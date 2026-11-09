@@ -18,8 +18,19 @@ import type { ContAssign, InstanceInfo, NArg, Netlist, NExpr, NLValue, NStmt, Pr
  * is faster, but assignments are simpler, handle width mismatches for free,
  * and match how the Verilog standard defines port semantics.
  */
-export function elaborate(file: A.SourceFile): Netlist {
-  return new Elaborator(file).run();
+export interface ElabOptions {
+  /**
+   * Elaborate only this module as the top, instead of every module nobody
+   * instantiates. The virtual board uses it to run the design without its
+   * testbench: the board itself drives the inputs.
+   */
+  top?: string;
+  /** Override the top module's parameters, like `#(.TICK(1000))` would on an instance. */
+  params?: Record<string, bigint>;
+}
+
+export function elaborate(file: A.SourceFile, options: ElabOptions = {}): Netlist {
+  return new Elaborator(file, options).run();
 }
 
 /** Width cap for a single vector — protects the browser from `reg [1<<30:0] x;`. */
@@ -69,7 +80,10 @@ class Elaborator {
   /** Hierarchical name -> signal, for `dut.count` style references. */
   private readonly sigByName = new Map<string, Signal>();
 
-  constructor(private readonly file: A.SourceFile) {}
+  constructor(
+    private readonly file: A.SourceFile,
+    private readonly options: ElabOptions,
+  ) {}
 
   run(): Netlist {
     for (const m of this.file.modules) {
@@ -82,13 +96,23 @@ class Elaborator {
     for (const m of this.file.modules) {
       for (const item of m.items) if (item.kind === 'Instance') instantiated.add(item.moduleName);
     }
-    const tops = this.file.modules.filter((m) => !instantiated.has(m.name));
+    let tops = this.file.modules.filter((m) => !instantiated.has(m.name));
+    if (this.options.top !== undefined) {
+      const chosen = this.modules.get(this.options.top);
+      if (!chosen) throw new VerilogError(`there is no module named '${this.options.top}'`, this.file.span);
+      tops = [chosen];
+    }
     if (tops.length === 0) {
       throw new VerilogError('every module is instantiated by another, so there is no top-level module', this.file.span);
     }
 
     for (const top of tops) {
-      this.elabModule(top, top.name, null, { named: new Map(), positional: [], span: top.span });
+      const named = new Map<string, ParamValue>();
+      for (const [name, value] of Object.entries(this.options.params ?? {})) {
+        // Treated like an unsized integer literal: 32-bit signed.
+        named.set(name, { value: resize(value, 64, 32, true), width: 32, signed: true, span: top.span });
+      }
+      this.elabModule(top, top.name, null, { named, positional: [], span: top.span });
     }
     return {
       signals: this.signals,
