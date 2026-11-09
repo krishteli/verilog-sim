@@ -15,6 +15,10 @@ no install, no server. Its output is checked byte-for-byte against
   `$monitor`/`$finish`, module hierarchy and parameters.
 - **Waveform viewer**: canvas-rendered, zoom/pan, cursor, per-signal radix,
   signal picker, **VCD export** for GTKWave/Surfer.
+- **Virtual Basys 3 board**: run your design on a simulated Digilent Basys 3 —
+  flip the 16 switches, hold the 5 push buttons, watch the LEDs and the
+  multiplexed 4-digit 7-segment display. Ports are matched by the same names
+  as the board's `.xdc`, so the same file goes to a real board unchanged.
 - **Shareable links**: the code is compressed into the URL; no backend.
 - **Examples**: counter, FSM, ALU, ripple-carry adder, NBA vs blocking, and a
   **Basys 3 board demo** with a constraints file and a [real-board guide](boards/basys3/README.md).
@@ -35,7 +39,8 @@ source ─► lexer ─► parser ─► AST ─► elaborator ─► netlist �
 | Elaborator | `src/core/elab` | Flattens instances into one netlist; resolves names; applies Verilog's context-/self-determined expression sizing once, up front. Ports become continuous assignments. |
 | Evaluator | `src/core/eval.ts` | Expressions compiled once into closures instead of tree-walked each time. |
 | Simulator | `src/core/sim` | Only re-evaluates what an input change affects. Active → inactive → NBA → postponed regions per time step. Each `always`/`initial` block is a JS generator that `yield`s at `#delay` / `@event`. |
-| UI | `src/ui` | React; simulation runs in a Web Worker so the page never freezes (Stop = terminate the worker). |
+| Board | `src/core/board` | A `SimSession` lets the board act as the testbench: it toggles `clk`, pokes switch/button inputs, and samples outputs every cycle. Brightness = fraction of cycles a light was on, so digit multiplexing and PWM dimming look like the real thing. |
+| UI | `src/ui` | React; simulation runs in a Web Worker so the page never freezes (Stop = terminate the worker). The board runs in its own worker, time-sliced into ~16 ms frames. |
 
 `src/core` has no DOM or React imports: it runs in Node for tests, in CI, and in the worker.
 
@@ -94,4 +99,12 @@ For Vercel, import the repo and use the defaults (build `npm run build`, output 
 - [x] Waveform viewer (zoom/pan, radix, VCD export)
 - [ ] Schematic view from the netlist (elkjs)
 - [x] Examples, shareable URLs, deployment config · [ ] demo GIF
-- [ ] Stretch: virtual Basys 3 panel (switches, buttons, LEDs, 7-segment)
+- [x] Stretch: virtual Basys 3 panel (switches, buttons, LEDs, 7-segment)
+
+### Virtual board notes
+
+The real board's clock is 100 MHz; JavaScript simulates a few hundred
+thousand cycles per second, so the panel runs the clock at a rate you choose
+(100 kHz by default) and lets you override the top module's parameters to
+shrink time constants — the same trick a testbench uses. The demo example
+presets `TICK=100_000`, so it still counts once per second.

@@ -22,6 +22,7 @@ source text
   -> elaborator   src/core/elab       Netlist: flat signals, sized exprs, processes
   -> simulator    src/core/sim        event-driven, 2-state, generators per process
   -> outputs      src/core/vcd.ts     VCD export; SimResult.waves for the viewer
+  -> board        src/core/board      virtual Basys 3 driving a SimSession
   -> UI           src/ui              Monaco, Web Worker, canvas waveform viewer
 ```
 
@@ -79,8 +80,9 @@ bash scripts/update-golden.sh   # regenerate golden .expected files with Icarus
 4. Waveform viewer (zoom/pan, radix, VCD export) — done
 5. Schematic view from the netlist (elkjs) — next
 6. Examples, shareable URLs, deployment — done except the README demo GIF
-Stretch: virtual Basys 3 board panel. A real-board flow (Vivado + XDC) is in
-`boards/basys3/`.
+Stretch: virtual Basys 3 board panel — done (`src/core/board`, `src/ui/BoardPanel.tsx`).
+A real-board flow (Vivado + XDC, or `build.tcl`) is in `boards/basys3/`; the
+demo is verified on real hardware.
 
 CI: `.github/workflows/ci.yml` runs typecheck, tests (incl. golden) and build,
 plus a job that regenerates golden outputs with a real `iverilog` and fails on

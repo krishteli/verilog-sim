@@ -19,9 +19,11 @@ holding **btnU** (up) pauses it.
 
 ## 1. Simulate first
 
-In the web app, choose the **Basys 3 board demo** example and press **Run**.
-The testbench shrinks the 1-second tick to 8 clock cycles so you can see it
-count in the waveform. Or run it under Icarus Verilog:
+In the web app, choose the **Basys 3 board demo** example and open the
+**Basys 3 board** tab: it runs the design on a virtual board where you can
+flip switches and hold buttons, with no hardware. The **Waveform** tab runs
+the testbench instead, which shrinks the 1-second tick to 8 clock cycles so
+you can see it count. Or run the testbench under Icarus Verilog:
 
 ```bash
 iverilog -o basys3.vvp boards/basys3/basys3_top.v boards/basys3/tb_basys3_top.v
