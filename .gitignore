@@ -9,3 +9,6 @@ coverage/
 boards/*/build/
 *.jou
 .Xil/
+# Local Vivado GUI projects
+verilog sim/
+*.xpr
