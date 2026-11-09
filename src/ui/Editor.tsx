@@ -11,6 +11,8 @@ interface Props {
   error: { message: string; span: Span | null } | null;
   /** Bumped by the parent to move the cursor to the error. */
   revealToken: number;
+  /** Select this source range (e.g. a block clicked in the schematic); `token` changes on every request. */
+  select?: { span: Span; token: number } | null;
 }
 
 const darkQuery = typeof window !== 'undefined' ? window.matchMedia('(prefers-color-scheme: dark)') : null;
@@ -20,7 +22,7 @@ const darkQuery = typeof window !== 'undefined' ? window.matchMedia('(prefers-co
  * methods on it), while React is declarative, so this component keeps the
  * editor in a ref and syncs props into it with effects.
  */
-export function Editor({ value, onChange, onRun, error, revealToken }: Props) {
+export function Editor({ value, onChange, onRun, error, revealToken, select }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
   const mod = useRef<MonacoModule | null>(null);
@@ -106,6 +108,20 @@ export function Editor({ value, onChange, onRun, error, revealToken }: Props) {
     // Only when the user asks (revealToken changes), not on every error.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealToken]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    const m = mod.current;
+    const model = editor?.getModel();
+    if (!editor || !m || !model || !select) return;
+    const start = model.getPositionAt(select.span.start);
+    const end = model.getPositionAt(select.span.end);
+    const range = new m.monaco.Range(start.lineNumber, start.column, end.lineNumber, end.column);
+    editor.setSelection(range);
+    editor.revealRangeInCenterIfOutsideViewport(range);
+    // Only when a new selection is requested.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [select?.token]);
 
   return (
     <div className="editor-host" ref={host} aria-label="Verilog source editor">

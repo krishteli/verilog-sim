@@ -358,6 +358,164 @@ button.link {
   align-items: center;
 }
 
+/* ---- schematic ------------------------------------------------------------------- */
+
+:root {
+  --sch-bg: #ffffff;
+  --sch-node: #ffffff;
+  --sch-border: #8a8f99;
+  --sch-wire: #4b5563;
+  --sch-hot: #d97706;
+  --sch-seq: #6d28d9;
+  --sch-comb: #0f766e;
+  --sch-init: #b45309;
+  --sch-inst: #1d4ed8;
+  --sch-port: #eef0f3;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --sch-bg: #12141a;
+    --sch-node: #1a1d24;
+    --sch-border: #5b616d;
+    --sch-wire: #9aa3b2;
+    --sch-hot: #fbbf24;
+    --sch-seq: #a78bfa;
+    --sch-comb: #5eead4;
+    --sch-init: #fbbf24;
+    --sch-inst: #93c5fd;
+    --sch-port: #232731;
+  }
+}
+
+.schematic {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.sch-canvas {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  background: var(--sch-bg);
+  cursor: grab;
+  touch-action: none;
+}
+
+.sch-canvas svg {
+  display: block;
+  user-select: none;
+}
+
+.sch-wire {
+  fill: none;
+  stroke: var(--sch-wire);
+  stroke-width: 1.25;
+}
+
+.sch-wire.bus {
+  stroke-width: 3;
+}
+
+.sch-wire.hot {
+  stroke: var(--sch-hot);
+}
+
+.sch-node {
+  cursor: pointer;
+  --kind: var(--sch-border);
+}
+
+.sch-node.seq { --kind: var(--sch-seq); }
+.sch-node.comb { --kind: var(--sch-comb); }
+.sch-node.initial { --kind: var(--sch-init); }
+.sch-node.instance { --kind: var(--sch-inst); }
+
+.sch-node rect,
+.sch-node polygon {
+  fill: var(--sch-node);
+  stroke: var(--kind);
+  stroke-width: 1.5;
+}
+
+.sch-node.initial > rect {
+  stroke-dasharray: 5 3;
+}
+
+.sch-node.input polygon,
+.sch-node.output polygon {
+  fill: var(--sch-port);
+}
+
+.sch-node.hot polygon {
+  stroke: var(--sch-hot);
+}
+
+.sch-node .sch-inner {
+  fill: none;
+  stroke-width: 1;
+  opacity: 0.5;
+}
+
+.sch-node:hover rect,
+.sch-node:hover polygon {
+  stroke-width: 2.5;
+}
+
+.sch-node text {
+  fill: var(--text);
+  font: 12px var(--mono);
+}
+
+.sch-node .sch-title {
+  font-weight: 600;
+  fill: var(--kind);
+}
+
+.sch-node.assign .sch-title,
+.sch-node.expr .sch-title {
+  fill: var(--text);
+}
+
+.sch-node .sch-sub {
+  fill: var(--text-muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.sch-divider {
+  stroke: var(--kind);
+  opacity: 0.35;
+}
+
+.sch-node .sch-pin {
+  font-size: 11px;
+}
+
+.sch-node .sch-pin.probe {
+  fill: var(--text-muted);
+  font-style: italic;
+}
+
+.sch-node .hot .sch-pin {
+  fill: var(--sch-hot);
+  font-weight: 600;
+}
+
+.sch-clock {
+  fill: none;
+  stroke: var(--kind);
+  stroke-width: 1.25;
+}
+
+.sch-bubble {
+  fill: var(--sch-node);
+  stroke: var(--kind);
+}
+
 /* ---- view tabs --------------------------------------------------------------- */
 
 .view-tabs {

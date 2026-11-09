@@ -3,6 +3,7 @@ import type { Span } from '../core';
 import { EXAMPLES } from '../examples';
 import { BoardPanel } from './BoardPanel';
 import { Editor } from './Editor';
+import { Schematic } from './Schematic';
 import { shareUrl, sourceFromHash } from './share';
 import { SimClient } from './simClient';
 import type { SimResponse } from './simTypes';
@@ -14,11 +15,12 @@ const DEFAULT_MAX_TIME = 100_000;
 const STORAGE_KEY = 'vsim:source';
 const VIEW_KEY = 'vsim:view';
 
-type View = 'wave' | 'board';
+type View = 'wave' | 'schematic' | 'board';
 
 function loadView(): View {
   try {
-    return localStorage.getItem(VIEW_KEY) === 'board' ? 'board' : 'wave';
+    const v = localStorage.getItem(VIEW_KEY);
+    return v === 'board' || v === 'schematic' ? v : 'wave';
   } catch {
     return 'wave';
   }
@@ -56,6 +58,7 @@ export function App() {
   const [boardRun, setBoardRun] = useState(0);
   const [boardParams, setBoardParams] = useState<Record<string, string>>(() => presetFor(source));
   const [boardError, setBoardError] = useState<{ message: string; span: Span | null } | null>(null);
+  const [selectSpan, setSelectSpan] = useState<{ span: Span; token: number } | null>(null);
   const client = useMemo(() => new SimClient(), []);
   const lastGood = useRef<Extract<SimResponse, { ok: true }> | null>(null);
   const sourceRef = useRef(source);
@@ -171,7 +174,7 @@ export function App() {
         <button onClick={share} title="Copy a link that contains this code">
           Share
         </button>
-        {status.kind === 'running' && view === 'wave' ? (
+        {status.kind === 'running' && view !== 'board' ? (
           <button className="primary" onClick={() => client.stop()}>
             Stop
           </button>
@@ -184,24 +187,31 @@ export function App() {
 
       <main className="panes">
         <section className="pane editor-pane">
-          <Editor value={source} onChange={setSource} onRun={runActive} error={error} revealToken={revealToken} />
+          <Editor value={source} onChange={setSource} onRun={runActive} error={error} revealToken={revealToken} select={selectSpan} />
         </section>
         <section className="pane right-pane">
           <div className="view-tabs" role="tablist" aria-label="Output view">
-            <button role="tab" aria-selected={view === 'wave'} className={view === 'wave' ? 'active' : ''} onClick={() => setView('wave')}>
-              Waveform
-            </button>
-            <button role="tab" aria-selected={view === 'board'} className={view === 'board' ? 'active' : ''} onClick={() => setView('board')}>
-              Basys 3 board
-            </button>
+            {(
+              [
+                ['wave', 'Waveform'],
+                ['schematic', 'Schematic'],
+                ['board', 'Basys 3 board'],
+              ] as const
+            ).map(([id, label]) => (
+              <button key={id} role="tab" aria-selected={view === id} className={view === id ? 'active' : ''} onClick={() => setView(id)}>
+                {label}
+              </button>
+            ))}
           </div>
-          {view === 'wave' ? (
+          {view !== 'board' ? (
             <>
               <div className="wave-pane">
-                {shown ? (
+                {!shown ? (
+                  <div className="placeholder">{status.kind === 'running' ? 'Simulating…' : 'Press Run to simulate.'}</div>
+                ) : view === 'wave' ? (
                   <Waveform netlist={shown.netlist} result={shown.result} />
                 ) : (
-                  <div className="placeholder">{status.kind === 'running' ? 'Simulating…' : 'Press Run to simulate.'}</div>
+                  <Schematic netlist={shown.netlist} onReveal={(span) => setSelectSpan((s) => ({ span, token: (s?.token ?? 0) + 1 }))} />
                 )}
               </div>
               <Console status={status} onJump={() => setRevealToken((n) => n + 1)} />
