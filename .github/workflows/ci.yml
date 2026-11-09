@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  # Placeholder for milestone 3: run each design in tests/golden/ under
+  # Icarus Verilog and under our simulator, then diff the outputs.
+  # Kept as a separate job so a missing iverilog never blocks unit tests.
+  # icarus-compare:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - run: sudo apt-get update && sudo apt-get install -y iverilog
+  #     - uses: actions/setup-node@v4
+  #       with: { node-version: lts/*, cache: npm }
+  #     - run: npm ci
+  #     - run: npm run test:golden
