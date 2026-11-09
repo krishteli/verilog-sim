@@ -5,7 +5,9 @@ Write a design, press **Run**, and inspect the console output and waveforms —
 no install, no server. Its output is checked byte-for-byte against
 [Icarus Verilog](https://steveicarus.github.io/iverilog/) in CI.
 
-<!-- TODO: demo GIF -->
+**[Try it live →](https://krishteli.github.io/verilog-sim/)**
+
+![Demo: a counter's waveform, its schematic, then the virtual Basys 3 board with switches lighting LEDs and the reset and pause buttons](docs/demo.gif)
 
 ## Features
 
@@ -103,7 +105,7 @@ For Vercel, import the repo and use the defaults (build `npm run build`, output 
 - [x] Event-driven simulation (clocked logic, NBA, delays)
 - [x] Waveform viewer (zoom/pan, radix, VCD export)
 - [x] Schematic view from the netlist (elkjs)
-- [x] Examples, shareable URLs, deployment config · [ ] demo GIF
+- [x] Examples, shareable URLs, deployment config, demo GIF (`npm run record-demo` re-records it)
 - [x] Stretch: virtual Basys 3 panel (switches, buttons, LEDs, 7-segment)
 
 ### Virtual board notes

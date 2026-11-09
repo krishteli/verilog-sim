@@ -80,7 +80,7 @@ bash scripts/update-golden.sh   # regenerate golden .expected files with Icarus
 3. Event-driven simulation (clocked logic, NBA, delays) — done
 4. Waveform viewer (zoom/pan, radix, VCD export) — done
 5. Schematic view from the netlist (elkjs) — done
-6. Examples, shareable URLs, deployment — done except the README demo GIF
+6. Examples, shareable URLs, deployment, README demo GIF — done (`npm run record-demo`)
 Stretch: virtual Basys 3 board panel — done (`src/core/board`, `src/ui/BoardPanel.tsx`).
 A real-board flow (Vivado + XDC, or `build.tcl`) is in `boards/basys3/`; the
 demo is verified on real hardware.
