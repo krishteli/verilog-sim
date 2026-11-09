@@ -1,0 +1,6 @@
+node_modules/
+dist/
+coverage/
+*.vcd
+*.log
+.DS_Store
