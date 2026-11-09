@@ -10,7 +10,7 @@ The author must be able to explain every part of it in an interview, so
 and chat — favour clarity over cleverness.
 
 Stack: TypeScript, React, Vite, Monaco Editor, Canvas (waveforms), elkjs
-(schematics, planned), Vitest. Deploys as a static site (GitHub Pages via
+(schematics), Vitest. Deploys as a static site (GitHub Pages via
 `.github/workflows/deploy.yml`, or Vercel).
 
 ## Pipeline
@@ -23,6 +23,7 @@ source text
   -> simulator    src/core/sim        event-driven, 2-state, generators per process
   -> outputs      src/core/vcd.ts     VCD export; SimResult.waves for the viewer
   -> board        src/core/board      virtual Basys 3 driving a SimSession
+  -> schematic    src/core/schematic  per-instance block diagram (layout: elkjs in the UI)
   -> UI           src/ui              Monaco, Web Worker, canvas waveform viewer
 ```
 
@@ -78,7 +79,7 @@ bash scripts/update-golden.sh   # regenerate golden .expected files with Icarus
 2. Elaboration + combinational logic — done
 3. Event-driven simulation (clocked logic, NBA, delays) — done
 4. Waveform viewer (zoom/pan, radix, VCD export) — done
-5. Schematic view from the netlist (elkjs) — next
+5. Schematic view from the netlist (elkjs) — done
 6. Examples, shareable URLs, deployment — done except the README demo GIF
 Stretch: virtual Basys 3 board panel — done (`src/core/board`, `src/ui/BoardPanel.tsx`).
 A real-board flow (Vivado + XDC, or `build.tcl`) is in `boards/basys3/`; the

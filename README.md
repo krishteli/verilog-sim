@@ -15,6 +15,10 @@ no install, no server. Its output is checked byte-for-byte against
   `$monitor`/`$finish`, module hierarchy and parameters.
 - **Waveform viewer**: canvas-rendered, zoom/pan, cursor, per-signal radix,
   signal picker, **VCD export** for GTKWave/Surfer.
+- **Schematic**: an RTL block diagram of each module, laid out with ELK —
+  inputs on the left, outputs on the right, one box per `always`/`assign`/
+  instance. Click an instance to open it, click a block to jump to its code,
+  hover a wire to highlight the whole net.
 - **Virtual Basys 3 board**: run your design on a simulated Digilent Basys 3 —
   flip the 16 switches, hold the 5 push buttons, watch the LEDs and the
   multiplexed 4-digit 7-segment display. Ports are matched by the same names
@@ -39,6 +43,7 @@ source ─► lexer ─► parser ─► AST ─► elaborator ─► netlist �
 | Elaborator | `src/core/elab` | Flattens instances into one netlist; resolves names; applies Verilog's context-/self-determined expression sizing once, up front. Ports become continuous assignments. |
 | Evaluator | `src/core/eval.ts` | Expressions compiled once into closures instead of tree-walked each time. |
 | Simulator | `src/core/sim` | Only re-evaluates what an input change affects. Active → inactive → NBA → postponed regions per time step. Each `always`/`initial` block is a JS generator that `yield`s at `#delay` / `@event`. |
+| Schematic | `src/core/schematic`, `src/ui/Schematic.tsx` | Selects one instance from the flat netlist and connects drivers to readers; port-connection assignments become wires into instance pins again. ELK's layered (Sugiyama) layout places it; rendered as SVG. |
 | Board | `src/core/board` | A `SimSession` lets the board act as the testbench: it toggles `clk`, pokes switch/button inputs, and samples outputs every cycle. Brightness = fraction of cycles a light was on, so digit multiplexing and PWM dimming look like the real thing. |
 | UI | `src/ui` | React; simulation runs in a Web Worker so the page never freezes (Stop = terminate the worker). The board runs in its own worker, time-sliced into ~16 ms frames. |
 
@@ -97,7 +102,7 @@ For Vercel, import the repo and use the defaults (build `npm run build`, output 
 - [x] Elaboration + combinational logic
 - [x] Event-driven simulation (clocked logic, NBA, delays)
 - [x] Waveform viewer (zoom/pan, radix, VCD export)
-- [ ] Schematic view from the netlist (elkjs)
+- [x] Schematic view from the netlist (elkjs)
 - [x] Examples, shareable URLs, deployment config · [ ] demo GIF
 - [x] Stretch: virtual Basys 3 panel (switches, buttons, LEDs, 7-segment)
 
