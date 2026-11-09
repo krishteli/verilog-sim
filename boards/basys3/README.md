@@ -39,7 +39,27 @@ vvp basys3.vvp
 4. Optional but handy: install Digilent's board files so *Basys 3* appears in
    the board picker (see Digilent's "Installing Vivado, Vitis and Digilent Board Files" guide).
 
-## 3. Build the bitstream
+## Quick path: build and program from a terminal (Linux)
+
+`build.tcl` does all of steps 3 and 4 with no GUI. From the repo root:
+
+```bash
+source /tools/Xilinx/*/Vivado/settings64.sh   # older installs: /tools/Xilinx/Vivado/*/settings64.sh
+vivado -mode batch -source boards/basys3/build.tcl -tclargs program
+```
+
+Leave off `-tclargs program` to only build `boards/basys3/build/basys3_top.bit`.
+
+**One time on Linux**, install the USB-JTAG cable drivers (then unplug and replug the board):
+
+```bash
+cd /tools/Xilinx/*/Vivado/data/xicom/cable_drivers/lin64/install_script/install_drivers && sudo ./install_drivers
+```
+
+Alternative programmer that skips the Vivado drivers:
+`sudo apt install openfpgaloader` then `sudo openFPGALoader -b basys3 boards/basys3/build/basys3_top.bit`.
+
+## 3. Build the bitstream (GUI)
 
 1. **Create Project** → RTL Project → next.
 2. **Add Sources**: add `basys3_top.v` only.
