@@ -10,67 +10,78 @@ The author must be able to explain every part of it in an interview, so
 and chat — favour clarity over cleverness.
 
 Stack: TypeScript, React, Vite, Monaco Editor, Canvas (waveforms), elkjs
-(schematics), Vitest. Deploys as a static site (Vercel or GitHub Pages).
+(schematics, planned), Vitest. Deploys as a static site (GitHub Pages via
+`.github/workflows/deploy.yml`, or Vercel).
 
 ## Pipeline
 
 ```
 source text
-  -> lexer        src/core/lexer     Token[]
-  -> parser       src/core/parser    AST (recursive descent, hand-written)
-  -> elaborator   src/core/elab      flat netlist (hierarchy inlined)   [M2]
-  -> simulator    src/core/sim       event-driven, 2-state             [M3]
-  -> UI           src/ui             Monaco, waveform canvas, schematic [M4-5]
+  -> lexer        src/core/lexer      Token[]
+  -> parser       src/core/parser     AST (recursive descent, hand-written)
+  -> elaborator   src/core/elab       Netlist: flat signals, sized exprs, processes
+  -> simulator    src/core/sim        event-driven, 2-state, generators per process
+  -> outputs      src/core/vcd.ts     VCD export; SimResult.waves for the viewer
+  -> UI           src/ui              Monaco, Web Worker, canvas waveform viewer
 ```
 
+Entry point for everything: `src/core/index.ts` (`compile`, `run`).
+
 `src/core/**` must stay **pure TypeScript with no DOM or React imports**, so
-it runs under Vitest in Node, in CI, and later in a Web Worker.
+it runs under Vitest in Node, in CI, and in the Web Worker.
 
-## Supported Verilog subset (v1)
+## Correctness reference: Icarus Verilog
 
-Modules; ANSI port lists (including leading-comma style); `wire`/`reg` with
-`[msb:lsb]` widths; `assign`; `always @(*)`; `always @(posedge clk)`;
-`if`/`else`; `case` with `default` (no `casez`/`casex` yet); blocking (`=`) and
-nonblocking (`<=`) assignment; common operators; module instantiation (named
-and positional ports, `#(...)` parameter overrides parse but are not yet
-elaborated); `initial` blocks with `#` delays; `$display`/`$finish`-style
-system tasks parse as calls. 2-state (0/1) logic only — X/Z come later.
+Our simulator's printed output must match Icarus exactly for every golden
+design (`tests/golden/*.v`, or `*.files` listing sources elsewhere such as
+`boards/basys3/`). When behaviour is unclear, **write a tiny probe design and
+run it under `iverilog`/`vvp`** instead of guessing; then pin the result with
+a golden design or unit test. After changing a golden design run
+`scripts/update-golden.sh` (needs `iverilog` on PATH; on this Windows machine
+it's in `C:\iverilog\bin`).
 
-Anything outside the subset should produce a **clear diagnostic with a
-line:column**, never a crash or silent misparse.
+Known, intentional differences (keep README in sync): 2-state values (X shows
+as 0, but first writes still behave as X->value events); divide by zero is 0;
+`` `timescale `` ignored.
+
+## Supported Verilog subset
+
+See README "Verilog subset". Anything outside it must produce a **clear
+diagnostic with a line:column**, never a crash or silent misparse.
 
 ## Conventions
 
-- Every source location is a `Span` (`start`/`end` byte offsets plus
-  1-based `line`/`col` of the start). Errors carry a `Span`.
-- Errors in the core are thrown as `VerilogError` (src/core/diagnostics.ts).
-- Tests live next to the code: `foo.ts` + `foo.test.ts`.
-- AST nodes are plain discriminated unions on `kind` — no classes — so they
-  serialize to JSON (useful for snapshot tests and Web Worker messages).
-- Keep commits small, one concern each, using Conventional Commit prefixes
-  (`feat(lexer):`, `test(parser):`, `ci:`, `docs:`, `chore:`). The body
-  explains *why*.
+- Every source location is a `Span` (`start`/`end` offsets plus 1-based
+  `line`/`col`). Errors are `VerilogError`s carrying a `Span`.
+- Tests live next to the code (`foo.ts` + `foo.test.ts`); golden tests in `tests/`.
+- AST and netlist are plain data (discriminated unions on `kind`/`k`), no
+  classes or closures, so they serialize and cross the worker boundary.
+- Values are canonical unsigned `bigint`s; signedness is applied only where an
+  operation needs it (see `src/core/bits.ts`).
+- Keep commits small, one concern each, Conventional Commit prefixes
+  (`feat(sim):`, `fix(elab):`, `test:`, `ci:`, `docs:`). The body explains *why*.
 
 ## Commands
 
 ```bash
 npm run dev        # Vite dev server
-npm test           # Vitest, single run
-npm run test:watch
+npm test           # Vitest: unit + golden tests
 npm run typecheck
 npm run build      # typecheck + production build into dist/
+bash scripts/update-golden.sh   # regenerate golden .expected files with Icarus
 ```
 
 ## Milestones
 
-1. Lexer and parser with unit tests  ← current
-2. Elaboration + combinational logic
-3. Event-driven simulation (clocked logic, NBA, delays)
-4. Waveform viewer (zoom/pan, radix, VCD export)
-5. Schematic view from the netlist (elkjs)
-6. Examples, shareable URLs, deployment, README with demo GIF
-Stretch: virtual Basys 3 board panel.
+1. Lexer and parser with unit tests — done
+2. Elaboration + combinational logic — done
+3. Event-driven simulation (clocked logic, NBA, delays) — done
+4. Waveform viewer (zoom/pan, radix, VCD export) — done
+5. Schematic view from the netlist (elkjs) — next
+6. Examples, shareable URLs, deployment — done except the README demo GIF
+Stretch: virtual Basys 3 board panel. A real-board flow (Vivado + XDC) is in
+`boards/basys3/`.
 
-CI (`.github/workflows/ci.yml`) runs typecheck + tests. Once the simulator
-exists (M3), it will also run designs under `tests/golden/` through Icarus
-Verilog and diff the output against ours.
+CI: `.github/workflows/ci.yml` runs typecheck, tests (incl. golden) and build,
+plus a job that regenerates golden outputs with a real `iverilog` and fails on
+any diff.
