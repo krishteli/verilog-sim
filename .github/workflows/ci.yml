@@ -16,18 +16,20 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      # Includes tests/golden.test.ts: our simulator's output must equal the
+      # checked-in Icarus output for every design in tests/golden/.
       - run: npm test
       - run: npm run build
 
-  # Placeholder for milestone 3: run each design in tests/golden/ under
-  # Icarus Verilog and under our simulator, then diff the outputs.
-  # Kept as a separate job so a missing iverilog never blocks unit tests.
-  # icarus-compare:
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - run: sudo apt-get update && sudo apt-get install -y iverilog
-  #     - uses: actions/setup-node@v4
-  #       with: { node-version: lts/*, cache: npm }
-  #     - run: npm ci
-  #     - run: npm run test:golden
+  # Proves the checked-in .expected files really are what Icarus Verilog
+  # prints: regenerate them with a real iverilog and fail on any difference.
+  # Kept separate so an apt hiccup never blocks the unit tests.
+  icarus-golden:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y iverilog
+      - run: iverilog -V | head -1
+      - run: bash scripts/update-golden.sh
+      - name: Expected outputs must be unchanged
+        run: git diff --exit-code tests/golden
