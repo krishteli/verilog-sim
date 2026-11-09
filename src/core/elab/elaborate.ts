@@ -66,6 +66,8 @@ class Elaborator {
   private readonly processes: Process[] = [];
   private readonly instances: InstanceInfo[] = [];
   private readonly stack: string[] = [];
+  /** Hierarchical name -> signal, for `dut.count` style references. */
+  private readonly sigByName = new Map<string, Signal>();
 
   constructor(private readonly file: A.SourceFile) {}
 
@@ -156,7 +158,11 @@ class Elaborator {
       );
     }
 
-    // Pass 2: behaviour and instances.
+    // Pass 2: child instances first, so hierarchical references like
+    // `dut.count` in this module's statements can find the child's signals.
+    for (const item of mod.items) if (item.kind === 'Instance') this.elabInstance(item, ctx);
+
+    // Pass 3: behaviour.
     for (const item of mod.items) {
       switch (item.kind) {
         case 'NetDecl':
@@ -177,8 +183,6 @@ class Elaborator {
           this.processes.push({ kind: 'initial', comb: null, body: this.convertStmt(item.body, ctx), scope: path, span: item.span });
           break;
         case 'Instance':
-          this.elabInstance(item, ctx);
-          break;
         case 'ParamDecl':
           break;
       }
@@ -232,10 +236,11 @@ class Elaborator {
       msb,
       lsb,
       direction,
-      init: 0n,
+      init: null,
       span,
     });
     ctx.scope.set(name, { kind: 'sig', id });
+    this.sigByName.set(this.signals[id]!.name, this.signals[id]!);
     return id;
   }
 
@@ -387,6 +392,11 @@ class Elaborator {
   private resolve(e: A.Expr, ctx: Ctx, constOnly = false): NExpr {
     switch (e.kind) {
       case 'Ident': {
+        if (e.name.includes('.')) {
+          if (constOnly) throw new VerilogError(`'${e.name}' is a signal, but a constant is required here`, e.span);
+          const sig = this.lookupHierarchical(e.name, ctx, e.span);
+          return { k: 'sig', sig: sig.id, width: sig.width, signed: sig.signed };
+        }
         const entry = ctx.scope.get(e.name);
         if (!entry) throw new VerilogError(`'${e.name}' is not declared`, e.span);
         if (entry.kind === 'param') return { k: 'const', value: entry.value, width: entry.width, signed: entry.signed };
@@ -474,6 +484,17 @@ class Elaborator {
     }
   }
 
+  /**
+   * Resolve `dut.count`: first relative to the current instance
+   * (`tb.dut.count` when we're in `tb`), then as an absolute path.
+   * Read-only for now — assigning through a hierarchical name is rejected.
+   */
+  private lookupHierarchical(name: string, ctx: Ctx, span: Span): Signal {
+    const sig = this.sigByName.get(`${ctx.path}.${name}`) ?? this.sigByName.get(name);
+    if (!sig) throw new VerilogError(`hierarchical name '${name}' does not match any signal`, span);
+    return sig;
+  }
+
   /** Translate a Verilog select into the `bias + scale * index` form used by the netlist. */
   private resolveSelect(
     e: A.Index | A.RangeSelect | A.PartSelect,
@@ -535,6 +556,9 @@ class Elaborator {
       case 'PartSelect': {
         const name = e.kind === 'Ident' ? e.name : e.target.kind === 'Ident' ? e.target.name : null;
         if (name === null) throw new VerilogError('not a valid assignment target', e.span);
+        if (name.includes('.')) {
+          throw new VerilogError(`assigning through a hierarchical name ('${name}') is not supported`, e.span);
+        }
         const entry = ctx.scope.get(name);
         if (!entry) throw new VerilogError(`'${name}' is not declared`, e.span);
         if (entry.kind === 'param') throw new VerilogError(`cannot assign to parameter '${name}'`, e.span);

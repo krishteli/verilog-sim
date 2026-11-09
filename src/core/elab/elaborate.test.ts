@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compile } from '../index';
+import { compile, run } from '../index';
 import { expectVerilogError } from '../parser/test-utils';
 
 const sigNames = (src: string) => compile(src).signals.map((s) => `${s.name}[${s.width}]`);
@@ -104,6 +104,29 @@ describe('elaborator: checks with fix-it messages', () => {
   it('rejects an always block with nothing to wait on at simulation time, not compile time', () => {
     // Statically legal; the simulator reports it (see simulator tests).
     expect(() => compile('module m; reg a; always a = ~a; endmodule')).not.toThrow();
+  });
+});
+
+describe('elaborator: hierarchical references', () => {
+  const design = `
+    module counter(input clk, output reg [3:0] q); reg [3:0] hidden = 4'd9; always @(posedge clk) q <= q + 1; endmodule
+    module tb; reg clk = 0; wire [3:0] q; counter dut(.clk(clk), .q(q));
+      initial #1 $display("%0d", dut.hidden);
+    endmodule`;
+
+  it('reads a child signal through a dotted name', () => {
+    expect(run(design).result.output).toBe('9\n');
+  });
+
+  it('accepts absolute paths and reports unknown ones', () => {
+    expect(run(design.replace('dut.hidden', 'tb.dut.hidden')).result.output).toBe('9\n');
+    expect(expectVerilogError(() => compile(design.replace('dut.hidden', 'dut.nope'))).message).toMatch(/does not match any signal/);
+  });
+
+  it('rejects assignment through a hierarchical name', () => {
+    expect(expectVerilogError(() => compile(design.replace('$display("%0d", dut.hidden)', 'dut.hidden = 1'))).message).toMatch(
+      /hierarchical name/,
+    );
   });
 });
 

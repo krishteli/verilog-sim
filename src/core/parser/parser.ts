@@ -672,10 +672,19 @@ class Parser {
   private parsePrimary(): A.Expr {
     const t = this.tok;
     switch (t.kind) {
-      case 'ident':
+      case 'ident': {
         this.next();
         if (this.isPunct('(')) this.failAt('function calls are not supported yet', t.span);
-        return { kind: 'Ident', name: t.text, span: t.span };
+        // Hierarchical reference such as `dut.count`: kept as one dotted name,
+        // resolved by the elaborator. (Named port connections `.a(x)` never get
+        // here — they start with '.', not an identifier.)
+        let name = t.text;
+        while (this.isPunct('.') && this.tokens[this.pos + 1]?.kind === 'ident') {
+          this.next();
+          name += '.' + this.next().text;
+        }
+        return { kind: 'Ident', name, span: this.spanFrom(t) };
+      }
       case 'number':
         this.next();
         return { kind: 'Number', value: t.value, span: t.span };
@@ -741,6 +750,9 @@ class Parser {
     }
     if (t.kind !== 'ident') this.fail('expected an assignment target (a name, bit select or {concatenation})');
     this.next();
+    if (this.isPunct('.')) {
+      this.failAt(`assigning through a hierarchical name ('${t.text}.…') is not supported`, t.span);
+    }
     return this.parsePostfix({ kind: 'Ident', name: t.text, span: t.span });
   }
 }
