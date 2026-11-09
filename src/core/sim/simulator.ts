@@ -114,8 +114,8 @@ interface Monitor {
 
 interface WaitState {
   trigger: CTrigger;
-  /** Value of each list item when the wait started (for edge detection). */
-  last: bigint[];
+  /** Value of each list item when the wait started (for edge detection); null = still unknown (X). */
+  last: (bigint | null)[];
 }
 
 class Proc implements Runnable {
@@ -150,6 +150,13 @@ class Simulator {
 
   private readonly assignReaders: Runnable[][];
   private readonly waiters: Set<Proc>[];
+  /**
+   * True until a signal is first written. In 4-state Verilog it would hold X
+   * until then; we store 0 but remember it's "unknown", so the first write
+   * still counts as a change (X -> 0 wakes `@(sig)`, X -> 1 is a posedge),
+   * the same events a 4-state simulator would produce.
+   */
+  private readonly unknown: boolean[];
 
   private readonly waves: Wave[];
   private out: string[] = [];
@@ -180,14 +187,35 @@ class Simulator {
     this.maxOutputChars = opts.maxOutputChars ?? 1_000_000;
 
     this.signals = netlist.signals;
-    this.values = this.signals.map((s) => s.init);
+    this.values = this.signals.map(() => 0n);
     this.env = { values: this.values, widths: this.signals.map((s) => s.width), now: () => BigInt(this.now) };
-    this.waves = this.signals.map((s) => ({ times: [0], values: [s.init] }));
+    this.waves = this.signals.map(() => ({ times: [0], values: [0n] }));
+    this.unknown = this.signals.map(() => true);
     this.assignReaders = this.signals.map(() => []);
     this.waiters = this.signals.map(() => new Set());
   }
 
   run(): SimResult {
+    /*
+     * Time-0 startup order, chosen to match Icarus (verified against it):
+     *   1. `always` blocks start and arm their first wait;
+     *   2. declaration initializers (`reg x = 5;`) are applied;
+     *   3. every continuous assignment is evaluated once;
+     *   4. `initial` blocks start — so they already see initialized values.
+     */
+    const procs = this.netlist.processes.map((p) => {
+      const proc = new Proc(p.span, this);
+      proc.gen = this.processBody(proc, p.kind, p.comb, this.compileStmt(p.body));
+      return { proc, kind: p.kind };
+    });
+    for (const { proc, kind } of procs) if (kind === 'always') this.schedule(proc);
+
+    for (const s of this.signals) {
+      if (s.init === null) continue;
+      const write: Write = { sig: s.id, off: 0, width: s.width, value: s.init };
+      this.schedule({ queued: false, span: s.span, run: () => this.applyWrites([write], true) });
+    }
+
     // Continuous assignments: compiled once, re-run whenever an input changes.
     for (const a of this.netlist.assigns) {
       const rhs = compileExpr(a.rhs, this.env);
@@ -198,15 +226,10 @@ class Simulator {
         run: () => this.applyWrites(locate(rhs())),
       };
       for (const r of a.reads) this.assignReaders[r]!.push(runnable);
-      this.schedule(runnable); // everything is evaluated once at time 0
+      this.schedule(runnable);
     }
 
-    for (const p of this.netlist.processes) {
-      const proc = new Proc(p.span, this);
-      const body = this.compileStmt(p.body);
-      proc.gen = this.processBody(proc, p.kind, p.comb, body);
-      this.schedule(proc);
-    }
+    for (const { proc, kind } of procs) if (kind === 'initial') this.schedule(proc);
 
     let stopReason: SimResult['stopReason'] = 'idle';
     for (;;) {
@@ -352,7 +375,10 @@ class Simulator {
       if (s.t === 0) this.inactive.push(p);
       else this.scheduleAt(this.now + s.t, p);
     } else {
-      const last = s.trigger.k === 'list' ? s.trigger.items.map((it) => it.f()) : [];
+      const last =
+        s.trigger.k === 'list'
+          ? s.trigger.items.map((it) => (it.sigs.some((id) => this.unknown[id]) ? null : it.f()))
+          : [];
       p.wait = { trigger: s.trigger, last };
       const sigs = s.trigger.k === 'star' ? s.trigger.sigs : s.trigger.items.flatMap((it) => it.sigs);
       for (const id of sigs) this.waiters[id]!.add(p);
@@ -450,7 +476,7 @@ class Simulator {
 
   // ---- signal updates -----------------------------------------------------------------
 
-  private applyWrites(writes: Write[]): void {
+  private applyWrites(writes: Write[], isInit = false): void {
     for (const w of writes) {
       const width = this.signals[w.sig]!.width;
       let { off, width: ww, value } = w;
@@ -464,21 +490,29 @@ class Simulator {
       const old = this.values[w.sig]!;
       const m = mask(ww) << BigInt(off);
       const next = trunc((old & ~m) | ((value << BigInt(off)) & m), width);
-      this.setSignal(w.sig, next);
+      this.setSignal(w.sig, next, isInit);
     }
   }
 
-  private setSignal(id: number, v: bigint): void {
-    if (this.values[id] === v) return; // no change -> no event: the heart of event-driven simulation
+  /**
+   * `isInit` marks a declaration initializer: like Icarus, it wakes
+   * level-sensitive waits (`@(x)`) but is not treated as an edge.
+   */
+  private setSignal(id: number, v: bigint, isInit = false): void {
+    const wasUnknown = this.unknown[id]!;
+    // No change -> no event: the heart of event-driven simulation.
+    // (The first write to an unknown signal is a change from X, even if the value is 0.)
+    if (!wasUnknown && this.values[id] === v) return;
+    this.unknown[id] = false;
     this.values[id] = v;
     this.record(id, v);
     if (this.monitor?.sigs.has(id)) this.queueMonitor();
     for (const r of this.assignReaders[id]!) this.schedule(r);
     const waiting = this.waiters[id]!;
-    if (waiting.size) for (const p of [...waiting]) this.checkWaiter(p);
+    if (waiting.size) for (const p of [...waiting]) this.checkWaiter(p, isInit);
   }
 
-  private checkWaiter(p: Proc): void {
+  private checkWaiter(p: Proc, isInit: boolean): void {
     const w = p.wait;
     if (!w) return;
     let fire = false;
@@ -486,14 +520,22 @@ class Simulator {
       fire = true;
     } else {
       w.trigger.items.forEach((it, i) => {
+        if (it.sigs.some((id) => this.unknown[id])) return; // still partly X: no defined value yet
         const before = w.last[i]!;
         const after = it.f();
         if (before === after) return;
         w.last[i] = after;
-        // Edges look at bit 0 only, like Verilog does for vectors. 2-state: posedge is 0->1.
-        if (it.edge === null) fire = true;
-        else if (it.edge === 'posedge' && bit(before, 0) === 0 && bit(after, 0) === 1) fire = true;
-        else if (it.edge === 'negedge' && bit(before, 0) === 1 && bit(after, 0) === 0) fire = true;
+        if (it.edge === null) {
+          fire = true;
+          return;
+        }
+        if (isInit) return;
+        // Edges look at bit 0 only, like Verilog does for vectors. From X (before
+        // === null), a 1 counts as a posedge and a 0 as a negedge.
+        const b = before === null ? null : bit(before, 0);
+        const a = bit(after, 0);
+        if (it.edge === 'posedge' && a === 1 && b !== 1) fire = true;
+        if (it.edge === 'negedge' && a === 0 && b !== 0) fire = true;
       });
     }
     if (!fire) return;

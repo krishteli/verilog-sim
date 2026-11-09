@@ -32,8 +32,8 @@ export interface Signal {
   msb: number;
   lsb: number;
   direction: 'input' | 'output' | null;
-  /** Value at time 0 (from `reg x = 1;`); 0 otherwise. */
-  init: bigint;
+  /** Declaration initializer (`reg x = 1;`), applied at time 0; null if none. */
+  init: bigint | null;
   span: Span;
 }
 

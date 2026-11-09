@@ -101,11 +101,26 @@ describe('edges and event controls', () => {
     expect(out(src)).toBe('0\n1\n');
   });
 
-  it('wakes level-sensitive lists on any change', () => {
+  it('wakes level-sensitive lists on any change (and on the X -> init change at time 0)', () => {
+    // Matches Icarus: the initializers count as X -> 0 changes, so "0: 00" prints;
+    // writing b = 1 again at time 3 is not a change and prints nothing.
     const src = `module t; reg a = 0, b = 0;
       always @(a or b) $display("%0d: %b%b", $time, a, b);
       initial begin #1 a = 1; #1 b = 1; #1 b = 1; end endmodule`;
-    expect(out(src)).toBe('1: 10\n2: 11\n');
+    expect(out(src)).toBe('0: 00\n1: 10\n2: 11\n');
+  });
+
+  it('treats the first write to an uninitialized reg as a change from X', () => {
+    const src = `module t; reg u; reg c;
+      always @(u) $display("u=%0d at %0d", u, $time);
+      always @(negedge c) $display("negedge c at %0d", $time);
+      initial begin #1 u = 0; c = 0; #1 u = 0; end endmodule`;
+    expect(out(src)).toBe('u=0 at 1\nnegedge c at 1\n');
+  });
+
+  it('does not treat declaration initializers as edges', () => {
+    const src = `module t; reg c = 1; always @(posedge c) $display("posedge"); initial #1 $display("done"); endmodule`;
+    expect(out(src)).toBe('done\n');
   });
 
   it('waits for an edge inside an initial block', () => {
