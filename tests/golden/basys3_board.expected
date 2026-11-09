@@ -1,0 +1,12 @@
+t=0 count=0000
+t=95 count=0001
+t=175 count=0002
+t=255 count=0003
+t=335 count=0004
+t=415 count=0005
+t=695 count=0006
+t=775 count=0007
+t=855 count=0008
+t=935 count=0009
+t=1015 count=000a
+count=000a led=0f0f
