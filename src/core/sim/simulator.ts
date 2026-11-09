@@ -32,6 +32,7 @@
  */
 import { bit, mask, resize, trunc } from '../bits';
 import { VerilogError, type Span } from '../diagnostics';
+import { collectReads } from '../elab/elaborate';
 import type { NArg, Netlist, NLValue, NStmt, Signal } from '../elab/netlist';
 import { compileExpr, compileOffset, type EvalEnv, type Thunk } from '../eval';
 import { formatArgs, FormatError, type FmtArg } from './format';
@@ -97,7 +98,19 @@ type CStmt =
   | { k: 'systask'; name: string; args: CArg[]; scope: string; span: Span }
   | { k: 'null' };
 
-type CArg = { k: 'str'; value: string } | { k: 'val'; f: Thunk; width: number; signed: boolean; isTime: boolean };
+type CArg =
+  | { k: 'str'; value: string }
+  | { k: 'val'; f: Thunk; width: number; signed: boolean; isTime: boolean; reads: number[] };
+
+interface Monitor {
+  args: CArg[];
+  /** Signals the arguments read; a change to any of them queues a check. */
+  sigs: Set<number>;
+  scope: string;
+  span: Span;
+  last: string | null;
+  queued: boolean;
+}
 
 interface WaitState {
   trigger: CTrigger;
@@ -142,8 +155,15 @@ class Simulator {
   private out: string[] = [];
   private outChars = 0;
   private finished = false;
-  private strobes: (() => string)[] = [];
-  private monitor: { args: CArg[]; scope: string; span: Span; last: string | null } | null = null;
+  /** Set by $finish; the simulation stops once the current time step completes. */
+  private finishPending = false;
+  /**
+   * Postponed-region work ($strobe output, $monitor checks), run in the order
+   * it was queued. That order is observable: Icarus prints whichever was
+   * queued first, so we keep one FIFO rather than "all monitors, then strobes".
+   */
+  private postponedQueue: (() => void)[] = [];
+  private monitor: Monitor | null = null;
   /** Whatever is running right now, for error messages. */
   private current: { span: Span } | null = null;
 
@@ -221,7 +241,6 @@ class Simulator {
         r.queued = false;
         this.current = r;
         r.run();
-        if (this.finished) return;
         if (++steps > this.maxSteps) {
           throw new VerilogError(
             `simulation did not settle at time ${this.now}; this is probably a combinational loop (logic that feeds back into itself without a register)`,
@@ -244,21 +263,26 @@ class Simulator {
       }
       break;
     }
-    this.postponed();
+    const work = this.postponedQueue;
+    this.postponedQueue = [];
+    for (const w of work) w();
+    if (this.finishPending) this.finished = true;
   }
 
-  private postponed(): void {
-    for (const s of this.strobes) this.print(s());
-    this.strobes = [];
+  /** Queue a $monitor check for the end of this time step (at most once per step). */
+  private queueMonitor(): void {
     const m = this.monitor;
-    if (m) {
-      // $monitor prints when any argument other than $time changes.
+    if (!m || m.queued) return;
+    m.queued = true;
+    this.postponedQueue.push(() => {
+      m.queued = false;
+      if (this.monitor !== m) return; // replaced by a later $monitor call
+      // $monitor prints when any argument other than $time changed.
       const key = m.args.map((a) => (a.k === 'val' && !a.isTime ? a.f().toString() : '')).join(',');
-      if (key !== m.last) {
-        m.last = key;
-        this.print(this.format(m.args, m.scope, m.span) + '\n');
-      }
-    }
+      if (key === m.last) return;
+      m.last = key;
+      this.print(this.format(m.args, m.scope, m.span) + '\n');
+    });
   }
 
   private schedule(r: Runnable): void {
@@ -319,8 +343,11 @@ class Simulator {
     p.suspends++;
     const s = r.value;
     if (s.k === 'finish') {
-      this.finished = true;
+      // Like Icarus, $finish ends the calling process at once, but the rest of
+      // the current time step (other processes, NBA updates, $strobe/$monitor)
+      // still completes before the simulation stops.
       p.done = true;
+      this.finishPending = true;
     } else if (s.k === 'delay') {
       if (s.t === 0) this.inactive.push(p);
       else this.scheduleAt(this.now + s.t, p);
@@ -388,11 +415,14 @@ class Simulator {
         this.print(this.format(s.args, s.scope, s.span));
         return false;
       case '$strobe':
-        this.strobes.push(() => this.format(s.args, s.scope, s.span) + '\n');
+        this.postponedQueue.push(() => this.print(this.format(s.args, s.scope, s.span) + '\n'));
         return false;
-      case '$monitor':
-        this.monitor = { args: s.args, scope: s.scope, span: s.span, last: null };
+      case '$monitor': {
+        const sigs = new Set(s.args.flatMap((a) => (a.k === 'val' ? a.reads : [])));
+        this.monitor = { args: s.args, sigs, scope: s.scope, span: s.span, last: null, queued: false };
+        this.queueMonitor(); // $monitor always prints once, at the end of the step it was called in
         return false;
+      }
       case '$finish':
       case '$stop':
         return true;
@@ -442,6 +472,7 @@ class Simulator {
     if (this.values[id] === v) return; // no change -> no event: the heart of event-driven simulation
     this.values[id] = v;
     this.record(id, v);
+    if (this.monitor?.sigs.has(id)) this.queueMonitor();
     for (const r of this.assignReaders[id]!) this.schedule(r);
     const waiting = this.waiters[id]!;
     if (waiting.size) for (const p of [...waiting]) this.checkWaiter(p);
@@ -560,7 +591,16 @@ class Simulator {
 
   private compileArg(a: NArg): CArg {
     if (a.k === 'str') return a;
-    return { k: 'val', f: compileExpr(a.expr, this.env), width: a.expr.width, signed: a.expr.signed, isTime: a.expr.k === 'time' };
+    const reads = new Set<number>();
+    collectReads(a.expr, reads);
+    return {
+      k: 'val',
+      f: compileExpr(a.expr, this.env),
+      width: a.expr.width,
+      signed: a.expr.signed,
+      isTime: a.expr.k === 'time',
+      reads: [...reads],
+    };
   }
 }
 
