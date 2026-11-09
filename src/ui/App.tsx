@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { Span } from '../core';
 import { EXAMPLES } from '../examples';
+import { BoardPanel } from './BoardPanel';
 import { Editor } from './Editor';
 import { shareUrl, sourceFromHash } from './share';
 import { SimClient } from './simClient';
@@ -10,6 +12,22 @@ type Status = { kind: 'idle' } | { kind: 'running' } | { kind: 'done'; res: SimR
 
 const DEFAULT_MAX_TIME = 100_000;
 const STORAGE_KEY = 'vsim:source';
+const VIEW_KEY = 'vsim:view';
+
+type View = 'wave' | 'board';
+
+function loadView(): View {
+  try {
+    return localStorage.getItem(VIEW_KEY) === 'board' ? 'board' : 'wave';
+  } catch {
+    return 'wave';
+  }
+}
+
+/** Board parameter preset for a source that is (or starts with) a known example. */
+function presetFor(source: string): Record<string, string> {
+  return EXAMPLES.find((e) => e.boardParams && source.startsWith(e.source.slice(0, 200)))?.boardParams ?? {};
+}
 
 function loadSaved(): string | null {
   try {
@@ -34,6 +52,10 @@ export function App() {
   const [status, setStatus] = useState<Status>({ kind: 'idle' });
   const [revealToken, setRevealToken] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
+  const [view, setView] = useState<View>(loadView);
+  const [boardRun, setBoardRun] = useState(0);
+  const [boardParams, setBoardParams] = useState<Record<string, string>>(() => presetFor(source));
+  const [boardError, setBoardError] = useState<{ message: string; span: Span | null } | null>(null);
   const client = useMemo(() => new SimClient(), []);
   const lastGood = useRef<Extract<SimResponse, { ok: true }> | null>(null);
   const sourceRef = useRef(source);
@@ -74,12 +96,29 @@ export function App() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(VIEW_KEY, view);
+    } catch {
+      // Remembering the tab is only a convenience.
+    }
+  }, [view]);
+
   const chooseExample = (id: string) => {
     const ex = EXAMPLES.find((e) => e.id === id);
     if (!ex) return;
     setExampleId(id);
     setSource(ex.source);
+    sourceRef.current = ex.source;
+    setBoardParams(ex.boardParams ?? {});
     void run(ex.source);
+    setBoardRun((n) => n + 1);
+  };
+
+  /** Run button / Ctrl+Enter: re-run whatever the right-hand view shows. */
+  const runActive = () => {
+    if (view === 'board') setBoardRun((n) => n + 1);
+    else void run();
   };
 
   const share = async () => {
@@ -94,7 +133,7 @@ export function App() {
   };
 
   const res = status.kind === 'done' ? status.res : null;
-  const error = res && !res.ok ? { message: res.message, span: res.span } : null;
+  const error = view === 'board' ? boardError : res && !res.ok ? { message: res.message, span: res.span } : null;
   // Keep showing the last good waveform while there's an error, so a typo doesn't blank the viewer.
   const shown = res?.ok ? res : lastGood.current;
 
@@ -132,12 +171,12 @@ export function App() {
         <button onClick={share} title="Copy a link that contains this code">
           Share
         </button>
-        {status.kind === 'running' ? (
+        {status.kind === 'running' && view === 'wave' ? (
           <button className="primary" onClick={() => client.stop()}>
             Stop
           </button>
         ) : (
-          <button className="primary" onClick={() => void run()} title="Run (Ctrl+Enter)">
+          <button className="primary" onClick={runActive} title="Run (Ctrl+Enter)">
             ▶ Run
           </button>
         )}
@@ -145,17 +184,39 @@ export function App() {
 
       <main className="panes">
         <section className="pane editor-pane">
-          <Editor value={source} onChange={setSource} onRun={() => void run()} error={error} revealToken={revealToken} />
+          <Editor value={source} onChange={setSource} onRun={runActive} error={error} revealToken={revealToken} />
         </section>
         <section className="pane right-pane">
-          <div className="wave-pane">
-            {shown ? (
-              <Waveform netlist={shown.netlist} result={shown.result} />
-            ) : (
-              <div className="placeholder">{status.kind === 'running' ? 'Simulating…' : 'Press Run to simulate.'}</div>
-            )}
+          <div className="view-tabs" role="tablist" aria-label="Output view">
+            <button role="tab" aria-selected={view === 'wave'} className={view === 'wave' ? 'active' : ''} onClick={() => setView('wave')}>
+              Waveform
+            </button>
+            <button role="tab" aria-selected={view === 'board'} className={view === 'board' ? 'active' : ''} onClick={() => setView('board')}>
+              Basys 3 board
+            </button>
           </div>
-          <Console status={status} onJump={() => setRevealToken((n) => n + 1)} />
+          {view === 'wave' ? (
+            <>
+              <div className="wave-pane">
+                {shown ? (
+                  <Waveform netlist={shown.netlist} result={shown.result} />
+                ) : (
+                  <div className="placeholder">{status.kind === 'running' ? 'Simulating…' : 'Press Run to simulate.'}</div>
+                )}
+              </div>
+              <Console status={status} onJump={() => setRevealToken((n) => n + 1)} />
+            </>
+          ) : (
+            // Mounted only while visible: leaving the tab terminates the board's worker, so it costs no CPU.
+            <BoardPanel
+              source={source}
+              runToken={boardRun}
+              params={boardParams}
+              onParamsChange={setBoardParams}
+              onError={setBoardError}
+              onLoadDemo={() => chooseExample('basys3')}
+            />
+          )}
         </section>
       </main>
       {toast && (

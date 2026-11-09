@@ -358,6 +358,300 @@ button.link {
   align-items: center;
 }
 
+/* ---- view tabs --------------------------------------------------------------- */
+
+.view-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 12px 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.view-tabs button {
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  background: none;
+  color: var(--text-muted);
+  margin-bottom: -1px;
+}
+
+.view-tabs button.active {
+  background: var(--bg);
+  border-color: var(--border);
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* ---- virtual Basys 3 ------------------------------------------------------------- */
+
+/*
+ * The board is a picture of a physical object, so it keeps its dark PCB
+ * colours in both themes; only the surrounding chrome follows the theme.
+ */
+.board-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  --pcb: #1b2a22;
+  --pcb-edge: #0f1914;
+  --silk: #d9e4dc;
+  --silk-muted: #8fa597;
+  --seg-on: #ff3b30;
+  --led-on: #3ddc6a;
+  --metal: #c9ccd1;
+}
+
+.board-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  flex-wrap: wrap;
+}
+
+.board-status code {
+  font-family: var(--mono);
+}
+
+.board-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.board-note {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-family: var(--mono);
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+
+.board-note p {
+  margin: 0 0 10px;
+  font-family: system-ui, sans-serif;
+  white-space: normal;
+}
+
+.board {
+  background: radial-gradient(ellipse at 30% 0%, #24382d, var(--pcb) 60%);
+  border: 6px solid var(--pcb-edge);
+  border-radius: 14px;
+  padding: 20px;
+  color: var(--silk);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 760px;
+  width: 100%;
+  margin: 0 auto;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+.board-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.sevenseg {
+  display: flex;
+  gap: 6px;
+  background: #0b0b0c;
+  padding: 12px 14px;
+  border-radius: 6px;
+  border: 2px solid #2b2b2e;
+}
+
+.digit {
+  width: 46px;
+  height: auto;
+}
+
+.segment {
+  fill: var(--seg-on);
+  /* --b is the measured brightness 0..1; unlit segments stay faintly visible like a real display. */
+  opacity: calc(0.08 + 0.92 * var(--b));
+}
+
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 44px);
+  grid-template-rows: repeat(3, 44px);
+  gap: 4px;
+}
+
+.pushbtn {
+  width: 44px;
+  height: 44px;
+  min-height: 0;
+  padding: 0;
+  border-radius: 50%;
+  border: 3px solid var(--metal);
+  background: #2c2f33;
+  color: var(--silk);
+  font: 600 12px var(--mono);
+  box-shadow: 0 3px 0 #0a0d0b;
+  touch-action: none;
+  user-select: none;
+}
+
+.pushbtn:hover {
+  background: #383c41;
+}
+
+.pushbtn.down {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 #0a0d0b;
+  background: #4a4f55;
+}
+
+.pushbtn.btnU { grid-area: 1 / 2; }
+.pushbtn.btnL { grid-area: 2 / 1; }
+.pushbtn.btnC { grid-area: 2 / 2; }
+.pushbtn.btnR { grid-area: 2 / 3; }
+.pushbtn.btnD { grid-area: 3 / 2; }
+
+.led-row,
+.switch-row {
+  display: grid;
+  grid-template-columns: repeat(16, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.led-cell,
+.switch-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.led {
+  width: 14px;
+  height: 8px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--led-on) calc(100% * var(--b)), #2a3a30);
+  box-shadow: 0 0 calc(12px * var(--b)) color-mix(in srgb, var(--led-on) calc(80% * var(--b)), transparent);
+}
+
+.pin-label {
+  font: 9px var(--mono);
+  color: var(--silk-muted);
+  white-space: nowrap;
+}
+
+.slide {
+  width: 20px;
+  height: 38px;
+  min-height: 0;
+  padding: 0;
+  border-radius: 4px;
+  border: 1px solid #0a0d0b;
+  background: #101512;
+  position: relative;
+}
+
+.slide:hover {
+  background: #18201b;
+}
+
+.slide .knob {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  height: 16px;
+  bottom: 2px;
+  border-radius: 3px;
+  background: var(--metal);
+  transition: bottom 0.08s ease-out;
+}
+
+.slide.on .knob {
+  bottom: 18px;
+}
+
+.unused {
+  opacity: 0.45;
+}
+
+.board-settings {
+  max-width: 760px;
+  width: 100%;
+  margin: 0 auto;
+  font-size: 13px;
+}
+
+.board-settings p {
+  margin: 0 0 10px;
+}
+
+.param-grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+
+.param-grid label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.param-grid input {
+  width: 130px;
+  font-family: var(--mono);
+}
+
+.board-log {
+  max-width: 760px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.board-log pre {
+  margin: 6px 0 0;
+  max-height: 160px;
+  overflow: auto;
+  font: 12px/1.45 var(--mono);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+@media (max-width: 600px) {
+  .board {
+    padding: 14px;
+  }
+  .led-row,
+  .switch-row {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    row-gap: 10px;
+  }
+  .board-top {
+    justify-content: center;
+  }
+  .digit {
+    width: 38px;
+  }
+}
+
 .toast {
   position: fixed;
   bottom: 16px;

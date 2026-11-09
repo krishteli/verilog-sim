@@ -16,6 +16,8 @@ export interface Example {
   id: string;
   name: string;
   source: string;
+  /** Parameter overrides for the virtual board, so real-board timing becomes watchable at simulation speed. */
+  boardParams?: Record<string, string>;
 }
 
 export const EXAMPLES: Example[] = [
@@ -24,6 +26,12 @@ export const EXAMPLES: Example[] = [
   { id: 'fsm', name: 'FSM: detect 1011', source: fsm },
   { id: 'adder', name: 'Ripple-carry adder', source: adder },
   { id: 'alu', name: '8-bit ALU', source: alu },
-  { id: 'basys3', name: 'Basys 3 board demo', source: `${basysTop}\n${basysTb}` },
+  {
+    id: 'basys3',
+    name: 'Basys 3 board demo',
+    source: `${basysTop}\n${basysTb}`,
+    // At the board panel's default 100 kHz clock: count once a second, scan the display ~100 times a second.
+    boardParams: { TICK: '100_000', REFRESH_BITS: '10' },
+  },
   { id: 'format', name: '$display formatting', source: monitor },
 ];
