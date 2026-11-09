@@ -1,0 +1,6 @@
+10: a=12 b=3 | nba 1 0 0 | blocking 1 1 1
+20: a=3 b=12 | nba 2 1 0 | blocking 2 2 2
+30: a=12 b=3 | nba 3 2 1 | blocking 3 3 3
+40: a=3 b=12 | nba 4 3 2 | blocking 4 4 4
+50: a=12 b=3 | nba 5 4 3 | blocking 5 5 5
+60: a=3 b=12 | nba 6 5 4 | blocking 6 6 6

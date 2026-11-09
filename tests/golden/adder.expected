@@ -1,0 +1,13 @@
+a= 0 b= 0 cin=0 sum= 0
+a= 8 b= 2 cin=1 sum=11
+a= 0 b= 5 cin=0 sum= 5
+a= 8 b= 7 cin=1 sum=16
+a= 0 b=10 cin=0 sum=10
+a= 8 b=12 cin=1 sum=21
+a= 0 b=15 cin=0 sum=15
+a= 8 b= 1 cin=0 sum= 9
+a= 0 b= 4 cin=1 sum= 5
+a= 8 b= 6 cin=0 sum=14
+a= 0 b= 9 cin=1 sum=10
+a= 8 b=11 cin=0 sum=19
+a= 0 b=14 cin=1 sum=15

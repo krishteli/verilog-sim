@@ -4,3 +4,4 @@ coverage/
 *.vcd
 *.log
 .DS_Store
+*.ours

@@ -1,0 +1,12 @@
+[  5] [5] [    5] [00000101] [101] [0a5] [005]
+[  -3] [-3] [fd]
+[        -42] [-42]
+chars: OK str 100%
+scope: tb
+no newline, then newline
+  5   -3
+monitor: x=  5 sx=  -3
+monitor: x=  6 sx=  -3
+display sees x=6
+monitor: x=  9 sx=   7
+strobe sees x=9

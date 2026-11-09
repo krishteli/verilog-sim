@@ -1,0 +1,4 @@
+monitor x=0
+posedge woke at 5, x=0
+strobe x=7
+monitor x=7
